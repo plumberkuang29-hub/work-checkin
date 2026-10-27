@@ -14,11 +14,11 @@
         input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fafafa; }
         button { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: background 0.2s; }
         button:active { background: #1d4ed8; }
-        button:disabled { background: #93c5fd; cursor: not-allowed; }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
         #status-msg { margin-top: 16px; text-align: center; font-size: 14px; font-weight: 500; }
         .success { color: #16a34a; }
         .error { color: #dc2626; }
-        .gps-info { font-size: 12px; color: #778899; margin-top: 4px; }
+        .gps-info { font-size: 13px; margin-top: 6px; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
     </style>
 </head>
 <body>
@@ -28,7 +28,7 @@
     
     <div class="form-group">
         <label for="name">施工人員姓名</label>
-        <input type="text" id="name" placeholder="請輸入您的名字" required>
+        <input type="text" id="name" placeholder="請輸入您的真實姓名" required>
     </div>
 
     <div class="form-group">
@@ -42,51 +42,75 @@
 
     <div class="form-group">
         <label for="note">備註 (選填)</label>
-        <input type="text" id="note" placeholder="例如：某某案場、材料清運等">
+        <input type="text" id="note" placeholder="例如：案場名稱、工作項目">
     </div>
 
     <div class="form-group">
-        <label>GPS 定位狀態</label>
-        <div id="gps-status" class="gps-info">正在取得定位...</div>
+        <label>GPS 定位狀態 (強制驗證)</label>
+        <div id="gps-status" class="gps-info" style="color: #64748b;">正在取得您的 GPS 座標...</div>
+        <button type="button" id="retry-gps" onclick="getLocation()" style="background: #475569; padding: 8px; font-size: 14px; margin-top: 8px;">重新取得定位</button>
     </div>
 
-    <button id="submit-btn" onclick="submitCheckIn()" disabled>確認打卡</button>
+    <button id="submit-btn" onclick="submitCheckIn()" disabled>必須取得 GPS 才能打卡</button>
     <div id="status-msg"></div>
 </div>
 
 <script>
     // 🔴 請把這裡換成你剛剛部署好的 GAS 網頁應用程式網址
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxVnYZAFcGMGgJwlcvK69BHYcgP3nqDO8Ftzj2So38Y01SFilItEdaXCHtFuSjO1qo2/exec";
+    const GAS_URL = "https://script.google.com/macros/s/你的GAS部署ID/exec";
 
     let currentLat = "";
     let currentLng = "";
 
-    // 頁面載入時自動抓取 GPS
     window.onload = function() {
+        getLocation();
+    };
+
+    function getLocation() {
         const gpsStatus = document.getElementById("gps-status");
         const submitBtn = document.getElementById("submit-btn");
 
         if (!navigator.geolocation) {
-            gpsStatus.innerText = "您的瀏覽器不支援定位功能";
+            gpsStatus.innerText = "❌ 您的瀏覽器不支援定位功能";
+            gpsStatus.style.color = "#dc2626";
             return;
         }
+
+        gpsStatus.innerText = "🔄 正在讀取 GPS 座標...";
+        gpsStatus.style.color = "#d97706";
+        submitBtn.disabled = true;
+        submitBtn.innerText = "等待 GPS 定位中...";
 
         navigator.geolocation.getCurrentPosition(
             function(position) {
                 currentLat = position.coords.latitude;
                 currentLng = position.coords.longitude;
-                gpsStatus.innerText = "✔ 定位成功 (精準度: " + Math.round(position.coords.accuracy) + "公尺)";
+                const accuracy = Math.round(position.coords.accuracy);
+                
+                gpsStatus.innerHTML = `✔ 定位成功<br><span style="font-size:11px; color:#16a34a;">緯度: ${currentLat.toFixed(5)}, 經度: ${currentLng.toFixed(5)} (誤差約 ${accuracy} 公尺)</span>`;
                 gpsStatus.style.color = "#16a34a";
-                submitBtn.disabled = false; // 解鎖按鈕
+                
+                // 成功抓到 GPS，解鎖按鈕
+                submitBtn.disabled = false;
+                submitBtn.innerText = "確認打卡";
             },
             function(error) {
-                gpsStatus.innerText = "✖ 無法取得定位，請允許瀏覽器存取 GPS";
+                let errorMsg = "✖ 無法取得定位";
+                if (error.code === error.PERMISSION_DENIED) {
+                    errorMsg = "✖ 您封鎖了定位權限！請到手機設定打開瀏覽器的「位置權限」。";
+                } else if (error.code === error.POSITION_UNAVAILABLE) {
+                    errorMsg = "✖ 讀取不到 GPS 訊號，請移至戶外或重試。";
+                } else if (error.code === error.TIMEOUT) {
+                    errorMsg = "✖ 定位逾時，請點擊下方「重新取得定位」。";
+                }
+                gpsStatus.innerText = errorMsg;
                 gpsStatus.style.color = "#dc2626";
-                submitBtn.disabled = false; // 就算沒 GPS 也可以允許手動送出，或維持鎖定看你需求
+                submitBtn.disabled = true;
+                submitBtn.innerText = "沒有 GPS 無法打卡";
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
-    };
+    }
 
     function submitCheckIn() {
         const name = document.getElementById("name").value.trim();
@@ -96,7 +120,13 @@
         const submitBtn = document.getElementById("submit-btn");
 
         if (!name) {
-            alert("請先輸入姓名！");
+            alert("請先輸入您的姓名！");
+            document.getElementById("name").focus();
+            return;
+        }
+
+        if (!currentLat || !currentLng) {
+            alert("尚未取得 GPS 座標，無法打卡！");
             return;
         }
 
@@ -112,22 +142,18 @@
             note: note
         };
 
-        // 使用 fetch 送到 GAS 後端
         fetch(GAS_URL, {
             method: "POST",
-            mode: "no-cors", // GAS 跨域標準寫法
-            headers: {
-                "Content-Type": "application/json"
-            },
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         })
         .then(response => {
             msgDiv.className = "success";
-            msgDiv.innerText = "✔ 打卡成功！資料已回報";
+            msgDiv.innerText = "✔ 打卡成功！紀錄已寫入";
             submitBtn.innerText = "確認打卡";
             submitBtn.disabled = false;
-            // 清空備註
-            document.getElementById("note").value = "";
+            document.getElementById("note").value = ""; // 清空備註
         })
         .catch(error => {
             msgDiv.className = "error";
