@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工地現場打卡</title>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #f4f6f9; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { background: #ffffff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); width: 100%; max-width: 400px; }
+        h2 { text-align: center; color: #333; margin-top: 0; margin-bottom: 24px; font-size: 22px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; color: #555; font-size: 14px; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fafafa; }
+        button { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: background 0.2s; }
+        button:active { background: #1d4ed8; }
+        button:disabled { background: #93c5fd; cursor: not-allowed; }
+        #status-msg { margin-top: 16px; text-align: center; font-size: 14px; font-weight: 500; }
+        .success { color: #16a34a; }
+        .error { color: #dc2626; }
+        .gps-info { font-size: 12px; color: #778899; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>工地現場打卡</h2>
+    
+    <div class="form-group">
+        <label for="name">施工人員姓名</label>
+        <input type="text" id="name" placeholder="請輸入您的名字" required>
+    </div>
+
+    <div class="form-group">
+        <label for="status">打卡狀態</label>
+        <select id="status">
+            <option value="上班打卡">上班打卡</option>
+            <option value="下班打卡">下班打卡</option>
+            <option value="外出/支援">外出/支援</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="note">備註 (選填)</label>
+        <input type="text" id="note" placeholder="例如：某某案場、材料清運等">
+    </div>
+
+    <div class="form-group">
+        <label>GPS 定位狀態</label>
+        <div id="gps-status" class="gps-info">正在取得定位...</div>
+    </div>
+
+    <button id="submit-btn" onclick="submitCheckIn()" disabled>確認打卡</button>
+    <div id="status-msg"></div>
+</div>
+
+<script>
+    // 🔴 請把這裡換成你剛剛部署好的 GAS 網頁應用程式網址
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxVnYZAFcGMGgJwlcvK69BHYcgP3nqDO8Ftzj2So38Y01SFilItEdaXCHtFuSjO1qo2/exec";
+
+    let currentLat = "";
+    let currentLng = "";
+
+    // 頁面載入時自動抓取 GPS
+    window.onload = function() {
+        const gpsStatus = document.getElementById("gps-status");
+        const submitBtn = document.getElementById("submit-btn");
+
+        if (!navigator.geolocation) {
+            gpsStatus.innerText = "您的瀏覽器不支援定位功能";
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                currentLat = position.coords.latitude;
+                currentLng = position.coords.longitude;
+                gpsStatus.innerText = "✔ 定位成功 (精準度: " + Math.round(position.coords.accuracy) + "公尺)";
+                gpsStatus.style.color = "#16a34a";
+                submitBtn.disabled = false; // 解鎖按鈕
+            },
+            function(error) {
+                gpsStatus.innerText = "✖ 無法取得定位，請允許瀏覽器存取 GPS";
+                gpsStatus.style.color = "#dc2626";
+                submitBtn.disabled = false; // 就算沒 GPS 也可以允許手動送出，或維持鎖定看你需求
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    };
+
+    function submitCheckIn() {
+        const name = document.getElementById("name").value.trim();
+        const status = document.getElementById("status").value;
+        const note = document.getElementById("note").value.trim();
+        const msgDiv = document.getElementById("status-msg");
+        const submitBtn = document.getElementById("submit-btn");
+
+        if (!name) {
+            alert("請先輸入姓名！");
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = "傳送中...";
+        msgDiv.innerText = "";
+
+        const payload = {
+            name: name,
+            status: status,
+            lat: currentLat,
+            lng: currentLng,
+            note: note
+        };
+
+        // 使用 fetch 送到 GAS 後端
+        fetch(GAS_URL, {
+            method: "POST",
+            mode: "no-cors", // GAS 跨域標準寫法
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            msgDiv.className = "success";
+            msgDiv.innerText = "✔ 打卡成功！資料已回報";
+            submitBtn.innerText = "確認打卡";
+            submitBtn.disabled = false;
+            // 清空備註
+            document.getElementById("note").value = "";
+        })
+        .catch(error => {
+            msgDiv.className = "error";
+            msgDiv.innerText = "✖ 傳送失敗，請再試一次";
+            submitBtn.innerText = "確認打卡";
+            submitBtn.disabled = false;
+        });
+    }
+</script>
+
+</body>
+</html>
