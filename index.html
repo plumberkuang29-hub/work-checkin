@@ -3,83 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工地現場打卡</title>
+    <title>工地現場安全打卡</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: #f4f6f9; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         .card { background: #ffffff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); width: 100%; max-width: 400px; }
-        h2 { text-align: center; color: #333; margin-top: 0; margin-bottom: 24px; font-size: 22px; }
+        h2 { text-align: center; color: #333; margin-top: 0; margin-bottom: 20px; font-size: 20px; }
         .form-group { margin-bottom: 16px; }
         label { display: block; margin-bottom: 6px; font-weight: 600; color: #555; font-size: 14px; }
         input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fafafa; }
         button { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: background 0.2s; }
-        button:active { background: #1d4ed8; }
         button:disabled { background: #cbd5e1; cursor: not-allowed; }
+        .line-btn { background: #06c755; margin-bottom: 15px; }
         #status-msg { margin-top: 16px; text-align: center; font-size: 14px; font-weight: 500; }
         .success { color: #16a34a; }
         .error { color: #dc2626; }
-        .gps-info { font-size: 13px; margin-top: 6px; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .info-box { font-size: 13px; margin-top: 6px; padding: 10px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; color: #334155; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>工地現場打卡</h2>
+    <h2>再豐工程 - 現場打卡</h2>
     
-    <div class="form-group">
-        <label for="name">施工人員姓名</label>
-        <input type="text" id="name" placeholder="請輸入您的真實姓名" required>
+    <!-- LINE 登入按鈕區域 -->
+    <div id="login-section" style="text-align: center;">
+        <p style="font-size: 14px; color: #666; margin-bottom: 15px;">為防止代打卡，請先進行身分驗證</p>
+        <button class="line-btn" onclick="lineLogin()">使用 LINE 帳號登入驗證</button>
     </div>
 
-    <div class="form-group">
-        <label for="status">打卡狀態</label>
-        <select id="status">
-            <option value="上班打卡">上班打卡</option>
-            <option value="下班打卡">下班打卡</option>
-            <option value="外出/支援">外出/支援</option>
-        </select>
+    <!-- 打卡表單區域 (登入後才顯示) -->
+    <div id="checkin-section" style="display: none;">
+        <div class="form-group">
+            <label>驗證身分 (已綁定)</label>
+            <input type="text" id="staff-name" readonly style="background: #e2e8f0; font-weight: bold;">
+        </div>
+
+        <div class="form-group">
+            <label for="site-name">選擇施工案場</label>
+            <select id="site-name">
+                <option value="群聯樓">群聯樓</option>
+                <option value="美光1">美光1</option>
+                <option value="美光2(VTG)">美光2(VTG)</option>
+                <option value="海淡廠">海淡廠</option>
+                <option value="聯亞">聯亞</option>
+                <option value="官田">官田</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="status">打卡狀態</label>
+            <select id="status">
+                <option value="上班">上班打卡</option>
+                <option value="已下班">下班打卡</option>
+                <option value="支援">支援/外出</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="note">備註 (選填)</label>
+            <input type="text" id="note" placeholder="例如：工作內容項目">
+        </div>
+
+        <div class="form-group">
+            <label>GPS 範圍檢核</label>
+            <div id="gps-status" class="info-box">正在讀取 GPS 座標...</div>
+        </div>
+
+        <button id="submit-btn" onclick="submitCheckIn()" disabled>正在核對距離與身分...</button>
     </div>
 
-    <div class="form-group">
-        <label for="note">備註 (選填)</label>
-        <input type="text" id="note" placeholder="例如：案場名稱、工作項目">
-    </div>
-
-    <div class="form-group">
-        <label>GPS 定位狀態 (強制驗證)</label>
-        <div id="gps-status" class="gps-info" style="color: #64748b;">正在取得您的 GPS 座標...</div>
-        <button type="button" id="retry-gps" onclick="getLocation()" style="background: #475569; padding: 8px; font-size: 14px; margin-top: 8px;">重新取得定位</button>
-    </div>
-
-    <button id="submit-btn" onclick="submitCheckIn()" disabled>必須取得 GPS 才能打卡</button>
     <div id="status-msg"></div>
 </div>
 
 <script>
-    // 🔴 請把這裡換成你剛剛部署好的 GAS 網頁應用程式網址
+    // 🔴 請填入你的 LINE Login Channel ID 與 GAS 網址
+    const LINE_CLIENT_ID = "你的LINE_CHANNEL_ID";
     const GAS_URL = "https://script.google.com/macros/s/你的GAS部署ID/exec";
 
     let currentLat = "";
     let currentLng = "";
+    let userLineId = "";
 
     window.onload = function() {
-        getLocation();
+        // 檢查網址列是否有 LINE 登入回傳的 Token
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get("access_token");
+
+        if (accessToken) {
+            // 用 Access Token 跟 LINE 換取用戶 Profile (取得 LINE ID)
+            fetch("https://api.line.me/v2/profile", {
+                headers: { "Authorization": "Bearer " + accessToken }
+            })
+            .then(res => res.json())
+            .then(data => {
+                userLineId = data.userId;
+                localStorage.setItem("line_user_id", userLineId);
+                localStorage.setItem("line_display_name", data.displayName);
+                initCheckInPage();
+            })
+            .catch(err => {
+                alert("LINE 登入驗證失敗，請重試");
+            });
+        } else if (localStorage.getItem("line_user_id")) {
+            userLineId = localStorage.getItem("line_user_id");
+            initCheckInPage();
+        }
     };
+
+    function lineLogin() {
+        const redirectUri = window.location.origin + window.location.pathname;
+        const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=token&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=123456&scope=profile%20openid`;
+        window.location.href = loginUrl;
+    }
+
+    function initCheckInPage() {
+        document.getElementById("login-section").style.display = "none";
+        document.getElementById("checkin-section").style.display = "block";
+        document.getElementById("staff-name").value = "驗證中 (LINE ID: " + userLineId.substring(0, 6) + "...)";
+        
+        // 開始抓取 GPS
+        getLocation();
+    }
 
     function getLocation() {
         const gpsStatus = document.getElementById("gps-status");
         const submitBtn = document.getElementById("submit-btn");
 
         if (!navigator.geolocation) {
-            gpsStatus.innerText = "❌ 您的瀏覽器不支援定位功能";
-            gpsStatus.style.color = "#dc2626";
+            gpsStatus.innerText = "❌ 瀏覽器不支援定位";
             return;
         }
-
-        gpsStatus.innerText = "🔄 正在讀取 GPS 座標...";
-        gpsStatus.style.color = "#d97706";
-        submitBtn.disabled = true;
-        submitBtn.innerText = "等待 GPS 定位中...";
 
         navigator.geolocation.getCurrentPosition(
             function(position) {
@@ -87,77 +142,61 @@
                 currentLng = position.coords.longitude;
                 const accuracy = Math.round(position.coords.accuracy);
                 
-                gpsStatus.innerHTML = `✔ 定位成功<br><span style="font-size:11px; color:#16a34a;">緯度: ${currentLat.toFixed(5)}, 經度: ${currentLng.toFixed(5)} (誤差約 ${accuracy} 公尺)</span>`;
-                gpsStatus.style.color = "#16a34a";
-                
-                // 成功抓到 GPS，解鎖按鈕
+                gpsStatus.innerHTML = `✔ GPS 讀取成功<br><span style="font-size:11px; color:#16a34a;">誤差約 ${accuracy} 公尺 (準備送出驗證)</span>`;
                 submitBtn.disabled = false;
                 submitBtn.innerText = "確認打卡";
             },
             function(error) {
-                let errorMsg = "✖ 無法取得定位";
-                if (error.code === error.PERMISSION_DENIED) {
-                    errorMsg = "✖ 您封鎖了定位權限！請到手機設定打開瀏覽器的「位置權限」。";
-                } else if (error.code === error.POSITION_UNAVAILABLE) {
-                    errorMsg = "✖ 讀取不到 GPS 訊號，請移至戶外或重試。";
-                } else if (error.code === error.TIMEOUT) {
-                    errorMsg = "✖ 定位逾時，請點擊下方「重新取得定位」。";
-                }
-                gpsStatus.innerText = errorMsg;
+                gpsStatus.innerText = "❌ 無法取得 GPS，請確認手機定位權限已開啟";
                 gpsStatus.style.color = "#dc2626";
                 submitBtn.disabled = true;
-                submitBtn.innerText = "沒有 GPS 無法打卡";
+                submitBtn.innerText = "缺少 GPS 無法打卡";
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
     }
 
     function submitCheckIn() {
-        const name = document.getElementById("name").value.trim();
+        const siteName = document.getElementById("site-name").value;
         const status = document.getElementById("status").value;
         const note = document.getElementById("note").value.trim();
         const msgDiv = document.getElementById("status-msg");
         const submitBtn = document.getElementById("submit-btn");
 
-        if (!name) {
-            alert("請先輸入您的姓名！");
-            document.getElementById("name").focus();
-            return;
-        }
-
-        if (!currentLat || !currentLng) {
-            alert("尚未取得 GPS 座標，無法打卡！");
-            return;
-        }
-
         submitBtn.disabled = true;
-        submitBtn.innerText = "傳送中...";
+        submitBtn.innerText = "正在核對資料與距離...";
         msgDiv.innerText = "";
 
         const payload = {
-            name: name,
+            lineId: userLineId,
+            siteName: siteName,
             status: status,
             lat: currentLat,
             lng: currentLng,
             note: note
         };
 
+        // 透過 fetch 將資料傳給 GAS 後端驗證
         fetch(GAS_URL, {
             method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         })
-        .then(response => {
-            msgDiv.className = "success";
-            msgDiv.innerText = "✔ 打卡成功！紀錄已寫入";
-            submitBtn.innerText = "確認打卡";
-            submitBtn.disabled = false;
-            document.getElementById("note").value = ""; // 清空備註
+        .then(res => res.json())
+        .then(result => {
+            if (result.status === "success") {
+                msgDiv.className = "success";
+                msgDiv.innerText = result.message;
+                submitBtn.innerText = "打卡成功";
+            } else {
+                msgDiv.className = "error";
+                msgDiv.innerText = result.message;
+                submitBtn.innerText = "確認打卡";
+                submitBtn.disabled = false;
+            }
         })
-        .catch(error => {
+        .catch(err => {
             msgDiv.className = "error";
-            msgDiv.innerText = "✖ 傳送失敗，請再試一次";
+            msgDiv.innerText = "✖ 伺服器連線異常，請稍後再試";
             submitBtn.innerText = "確認打卡";
             submitBtn.disabled = false;
         });
