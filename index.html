@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工地現場安全打卡</title>
+    <!-- 引入 LINE LIFF SDK -->
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: #f4f6f9; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -14,7 +16,6 @@
         input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fafafa; }
         button { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: background 0.2s; }
         button:disabled { background: #cbd5e1; cursor: not-allowed; }
-        .line-btn { background: #06c755; margin-bottom: 15px; }
         #status-msg { margin-top: 16px; text-align: center; font-size: 14px; font-weight: 500; }
         .success { color: #16a34a; }
         .error { color: #dc2626; }
@@ -26,17 +27,15 @@
 <div class="card">
     <h2>再豐工程 - 現場打卡</h2>
     
-    <!-- LINE 登入按鈕區域 -->
-    <div id="login-section" style="text-align: center;">
-        <p style="font-size: 14px; color: #666; margin-bottom: 15px;">為防止代打卡，請先進行身分驗證</p>
-        <button class="line-btn" onclick="lineLogin()">使用 LINE 帳號登入驗證</button>
+    <div id="loading-section" style="text-align: center; padding: 20px; color: #666;">
+        <p>正在透過 LINE 自動驗證身分...</p>
     </div>
 
-    <!-- 打卡表單區域 (登入後才顯示) -->
+    <!-- 打卡表單區域 (驗證通過後顯示) -->
     <div id="checkin-section" style="display: none;">
         <div class="form-group">
-            <label>驗證身分 (已綁定)</label>
-            <input type="text" id="staff-name" readonly style="background: #e2e8f0; font-weight: bold;">
+            <label>驗證身分 (已綁定 LINE)</label>
+            <input type="text" id="staff-name" readonly style="background: #e2e8f0; font-weight: bold; color: #16a34a;">
         </div>
 
         <div class="form-group">
@@ -70,15 +69,15 @@
             <div id="gps-status" class="info-box">正在讀取 GPS 座標...</div>
         </div>
 
-        <button id="submit-btn" onclick="submitCheckIn()" disabled>正在核對距離與身分...</button>
+        <button id="submit-btn" onclick="submitCheckIn()" disabled>正在核對距離...</button>
     </div>
 
     <div id="status-msg"></div>
 </div>
 
 <script>
-    // 🔴 請填入你的 LINE Login Channel ID 與 GAS 網址
-    const LINE_CLIENT_ID = "2011970388";
+    // 🔴 請填入你的 LIFF ID 與 GAS 網址
+    const LIFF_ID = "你的LIFF_ID"; 
     const GAS_URL = "https://script.google.com/macros/s/你的GAS部署ID/exec";
 
     let currentLat = "";
@@ -86,46 +85,31 @@
     let userLineId = "";
 
     window.onload = function() {
-        // 檢查網址列是否有 LINE 登入回傳的 Token
-        const hash = window.location.hash.substring(1);
-        const params = new URLSearchParams(hash);
-        const accessToken = params.get("access_token");
-
-        if (accessToken) {
-            // 用 Access Token 跟 LINE 換取用戶 Profile (取得 LINE ID)
-            fetch("https://api.line.me/v2/profile", {
-                headers: { "Authorization": "Bearer " + accessToken }
-            })
-            .then(res => res.json())
-            .then(data => {
-                userLineId = data.userId;
-                localStorage.setItem("line_user_id", userLineId);
-                localStorage.setItem("line_display_name", data.displayName);
-                initCheckInPage();
-            })
-            .catch(err => {
-                alert("LINE 登入驗證失敗，請重試");
-            });
-        } else if (localStorage.getItem("line_user_id")) {
-            userLineId = localStorage.getItem("line_user_id");
-            initCheckInPage();
-        }
+        // 初始化 LINE LIFF
+        liff.init({ liffId: LIFF_ID })
+        .then(() => {
+            if (!liff.isLoggedIn()) {
+                // 如果沒登入 LINE，自動引導登入
+                liff.login();
+            } else {
+                // 取得使用者 LINE 資料
+                liff.getProfile().then(profile => {
+                    userLineId = profile.userId;
+                    document.getElementById("loading-section").style.display = "none";
+                    document.getElementById("checkin-section").style.display = "block";
+                    document.getElementById("staff-name").value = "✔ 驗證成功 (LINE ID 已綁定)";
+                    
+                    // 開始抓 GPS
+                    getLocation();
+                }).catch(err => {
+                    alert("無法取得 LINE 個人資料：" + err);
+                });
+            }
+        })
+        .catch(err => {
+            document.getElementById("loading-section").innerHTML = "❌ LINE LIFF 初始化失敗: " + err;
+        });
     };
-
-    function lineLogin() {
-    const redirectUri = window.location.href.split('#')[0]; // 自動抓取當前乾淨的網址
-    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=token&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=123456&scope=profile%20openid`;
-    window.location.assign(loginUrl); // 強制跳轉至 LINE 登入頁
-}
-
-    function initCheckInPage() {
-        document.getElementById("login-section").style.display = "none";
-        document.getElementById("checkin-section").style.display = "block";
-        document.getElementById("staff-name").value = "驗證中 (LINE ID: " + userLineId.substring(0, 6) + "...)";
-        
-        // 開始抓取 GPS
-        getLocation();
-    }
 
     function getLocation() {
         const gpsStatus = document.getElementById("gps-status");
@@ -142,7 +126,7 @@
                 currentLng = position.coords.longitude;
                 const accuracy = Math.round(position.coords.accuracy);
                 
-                gpsStatus.innerHTML = `✔ GPS 讀取成功<br><span style="font-size:11px; color:#16a34a;">誤差約 ${accuracy} 公尺 (準備送出驗證)</span>`;
+                gpsStatus.innerHTML = `✔ GPS 讀取成功<br><span style="font-size:11px; color:#16a34a;">誤差約 ${accuracy} 公尺</span>`;
                 submitBtn.disabled = false;
                 submitBtn.innerText = "確認打卡";
             },
@@ -176,7 +160,6 @@
             note: note
         };
 
-        // 透過 fetch 將資料傳給 GAS 後端驗證
         fetch(GAS_URL, {
             method: "POST",
             body: JSON.stringify(payload)
