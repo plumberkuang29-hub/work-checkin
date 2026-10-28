@@ -113,10 +113,10 @@
     };
 
     function lineLogin() {
-        const redirectUri = window.location.origin + window.location.pathname;
-        const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=token&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=123456&scope=profile%20openid`;
-        window.location.href = loginUrl;
-    }
+    const redirectUri = window.location.href.split('#')[0]; // 自動抓取當前乾淨的網址
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=token&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=123456&scope=profile%20openid`;
+    window.location.assign(loginUrl); // 強制跳轉至 LINE 登入頁
+}
 
     function initCheckInPage() {
         document.getElementById("login-section").style.display = "none";
